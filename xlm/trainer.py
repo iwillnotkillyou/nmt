@@ -459,7 +459,7 @@ class Trainer(object):
         _x_mask = _x_real.clone().fill_(params.mask_index)
         probs = torch.multinomial(params.pred_probs, len(_x_real), replacement=True)
         _x = _x_mask * (probs == 0).long() + _x_real * (probs == 1).long() + _x_rand * (probs == 2).long()
-        x = x.masked_scatter(pred_mask, _x)
+        x = x.masked_scatter(pred_mask > 0, _x)
 
         assert 0 <= x.min() <= x.max() < params.n_words
         assert x.size() == (slen, bs)
@@ -717,7 +717,7 @@ class Trainer(object):
 
         # forward / loss
         tensor = model('fwd', x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
-        _, loss = model('predict', ztensor=tensor, pred_mask=pred_mask, y=y, get_scores=False)
+        _, loss = model('predict', tensor=tensor, pred_mask=pred_mask, y=y, get_scores=False)
         self.stats[('MLM-%s' % lang1) if lang2 is None else ('MLM-%s-%s' % (lang1, lang2))].append(loss.item())
         loss = lambda_coeff * loss
 

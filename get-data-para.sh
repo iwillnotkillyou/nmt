@@ -176,6 +176,28 @@ if [ $pair == "en-zh" ]; then
   unzip -u $PARA_PATH/download.php?f=MultiUN%2Fen-zh.txt.zip -d $PARA_PATH
 fi
 
+# cs-en
+if [ $pair == "cs-en" ]; then
+  echo "Download parallel data for English-Czech"
+  # OpenSubtitles 2018
+  # wget -c https://object.pouta.csc.fi/OPUS-OpenSubtitles/v2018/moses/cs-en.txt.zip -P $PARA_PATH
+  # Tanzil
+  wget -c https://object.pouta.csc.fi/OPUS-Tanzil/v1/moses/cs-en.txt.zip -P $PARA_PATH
+  unzip -u $PARA_PATH/cs-en.txt.zip -d $PARA_PATH
+fi
+
+# en-cs
+if [ $pair == "en-cs" ]; then
+  echo "Download parallel data for English-Czech"
+  # OpenSubtitles 2018
+  # wget -c https://object.pouta.csc.fi/OPUS-OpenSubtitles/v2018/moses/en-cs.txt.zip -P $PARA_PATH
+  # Tanzil
+  wget -c https://object.pouta.csc.fi/OPUS-Tanzil/v1/moses/en-xa.txt.zip -P $PARA_PATH
+  unzip -u $PARA_PATH/cs-en.txt.zip -d $PARA_PATH
+  #mv $PARA_PATH/Tanzil.cs-en.cs $PARA_PATH/Tanzil.en-cs.cs
+  #mv $PARA_PATH/Tanzil.cs-en.en $PARA_PATH/Tanzil.en-cs.en
+  #mv $PARA_PATH/Tanzil.cs-en.ids $PARA_PATH/Tanzil.en-cs.ids
+fi
 
 #
 # Tokenize and preprocess data
@@ -203,4 +225,3 @@ split_data() {
 for lg in $(echo $pair | sed -e 's/\-/ /g'); do
   split_data $PARA_PATH/$pair.$lg.all $PARA_PATH/$pair.$lg.train $PARA_PATH/$pair.$lg.valid $PARA_PATH/$pair.$lg.test
 done
-
