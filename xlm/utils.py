@@ -52,6 +52,7 @@ def initialize_exp(params):
     """
     # dump parameters
     get_dump_path(params)
+    os.mkdir(params.dump_path)
     pickle.dump(params, open(os.path.join(params.dump_path, 'params.pkl'), 'wb'))
 
     # get running command

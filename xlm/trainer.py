@@ -15,8 +15,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils import clip_grad_norm_
-import apex
-
+if False:
+    import apex
 from .optim import get_optimizer
 from .utils import to_cuda, concat_batches, find_modules
 from .utils import parse_lambda_config, update_lambdas
@@ -847,18 +847,38 @@ class EncDecTrainer(Trainer):
         # cuda
         x1, len1, langs1, x2, len2, langs2, y = to_cuda(x1, len1, langs1, x2, len2, langs2, y)
 
-        # encode source sentence
-        enc1 = self.encoder('fwd', x=x1, lengths=len1, langs=langs1, causal=False)
-        enc1 = enc1.transpose(0, 1)
+        def get_loss(x1, x2, y):
+            # encode source sentence
+            enc1 = self.encoder.fwd_embedded('fwd', x=x1, lengths=len1, langs=langs1, causal=False)
+            enc1 = enc1.transpose(0, 1)
 
-        # decode target sentence
-        dec2 = self.decoder('fwd', x=x2, lengths=len2, langs=langs2, causal=True, src_enc=enc1, src_len=len1)
+            # decode target sentence
+            dec2 = self.decoder('fwd', x=x2, lengths=len2, langs=langs2, causal=True, src_enc=enc1, src_len=len1)
 
-        # loss
-        _, loss = self.decoder('predict', tensor=dec2, pred_mask=pred_mask, y=y, get_scores=False)
-        self.stats[('AE-%s' % lang1) if lang1 == lang2 else ('MT-%s-%s' % (lang1, lang2))].append(loss.item())
-        loss = lambda_coeff * loss
+            # loss
+            _, loss = self.decoder('predict', tensor=dec2, pred_mask=pred_mask, y=y, get_scores=False)
+            self.stats[('AE-%s' % lang1) if lang1 == lang2 else ('MT-%s-%s' % (lang1, lang2))].append(loss.item())
+            return lambda_coeff * loss
 
+        def clip_to_norm(vec, norm):
+            norms = torch.sqrt(torch.sum(torch.square(vec), 1))
+            return torch.where(torch.ge(norms, norm), (vec / norms) * norm, vec)
+
+        if params.at_steps > 0:
+            x0 = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
+            delta = torch.normal(torch.zeros(x0.shape), torch.fill(x0.shape, params.at_epsilon / 3))
+            for i in range(params.at_steps):
+                names = self.optimizers.keys()
+                for optimizer in [self.optimizers[k] for k in names]:
+                    optimizer.zero_grad()
+                x1 = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
+                loss = get_loss(x1 + delta, x2, y)
+                loss.backward()
+                grad = x1.grad
+                delta = clip_to_norm(delta + grad, params.at_epsilon)
+
+        x1 = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
+        loss = get_loss(x1 + delta if params.at_steps > 0 else 0, x2, y)
         # optimize
         self.optimize(loss)
 
