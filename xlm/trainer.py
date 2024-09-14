@@ -715,11 +715,31 @@ class Trainer(object):
         # cuda
         x, y, pred_mask, lengths, positions, langs = to_cuda(x, y, pred_mask, lengths, positions, langs)
 
-        # forward / loss
-        tensor = model('fwd', x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
-        _, loss = model('predict', tensor=tensor, pred_mask=pred_mask, y=y, get_scores=False)
-        self.stats[('MLM-%s' % lang1) if lang2 is None else ('MLM-%s-%s' % (lang1, lang2))].append(loss.item())
-        loss = lambda_coeff * loss
+        def get_loss(x, y):
+            tensor = model.fwd_embedder('fwd', x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
+            _, loss = model('predict', tensor=tensor, pred_mask=pred_mask, y=y, get_scores=False)
+            self.stats[('MLM-%s' % lang1) if lang2 is None else ('MLM-%s-%s' % (lang1, lang2))].append(loss.item())
+            return lambda_coeff * loss
+
+        def clip_to_norm(vec, norm):
+            norms = torch.sqrt(torch.sum(torch.square(vec), 1))
+            return torch.where(torch.ge(norms, norm), (vec / norms) * norm, vec)
+
+        if params.at_steps > 0:
+            tensor = model.fwd_embed_only(x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
+            delta = torch.normal(torch.zeros(tensor.shape), torch.fill(tensor.shape, params.at_epsilon / 3))
+            for i in range(params.at_steps):
+                names = self.optimizers.keys()
+                for optimizer in [self.optimizers[k] for k in names]:
+                    optimizer.zero_grad()
+                tensor = model.fwd_embed_only(x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
+                loss = get_loss(x + delta, y)
+                loss.backward()
+                grad = tensor.grad
+                delta = clip_to_norm(delta + grad, params.at_epsilon)
+
+        tensor = model.fwd_embed_only(x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
+        loss = get_loss(tensor + delta if params.at_steps > 0 else 0, y)
 
         # optimize
         self.optimize(loss)
@@ -865,20 +885,20 @@ class EncDecTrainer(Trainer):
             return torch.where(torch.ge(norms, norm), (vec / norms) * norm, vec)
 
         if params.at_steps > 0:
-            x0 = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
-            delta = torch.normal(torch.zeros(x0.shape), torch.fill(x0.shape, params.at_epsilon / 3))
+            tensor = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
+            delta = torch.normal(torch.zeros(tensor.shape), torch.fill(tensor.shape, params.at_epsilon / 3))
             for i in range(params.at_steps):
                 names = self.optimizers.keys()
                 for optimizer in [self.optimizers[k] for k in names]:
                     optimizer.zero_grad()
-                x1 = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
-                loss = get_loss(x1 + delta, x2, y)
+                tensor = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
+                loss = get_loss(tensor + delta, x2, y)
                 loss.backward()
-                grad = x1.grad
+                grad = tensor.grad
                 delta = clip_to_norm(delta + grad, params.at_epsilon)
 
-        x1 = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
-        loss = get_loss(x1 + delta if params.at_steps > 0 else 0, x2, y)
+        tensor = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
+        loss = get_loss(tensor + delta if params.at_steps > 0 else 0, x2, y)
         # optimize
         self.optimize(loss)
 
