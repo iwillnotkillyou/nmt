@@ -346,12 +346,13 @@ class TransformerModel(nn.Module):
             src_mask = torch.arange(src_len.max(), dtype=torch.long, device=lengths.device) < src_len[:, None]
         if cache is not None:
             _slen = slen - cache['slen']
-            x = x[:, -_slen:]
             positions = positions[:, -_slen:]
             if langs is not None:
                 langs = langs[:, -_slen:]
             mask = mask[:, -_slen:]
             attn_mask = attn_mask[:, -_slen:]
+
+        tensor = x
 
         # transformer layers
         for i in range(self.n_layers):
