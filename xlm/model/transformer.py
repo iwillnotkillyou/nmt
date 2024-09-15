@@ -340,7 +340,7 @@ class TransformerModel(nn.Module):
         """
         # lengths = (x != self.pad_index).float().sum(dim=1)
         # mask = x != self.pad_index
-        slen, bs = x.size()
+        bs, slen, _ = x.size()
         mask, attn_mask = get_masks(slen, lengths, causal)
         if self.is_decoder and src_enc is not None:
             src_mask = torch.arange(src_len.max(), dtype=torch.long, device=lengths.device) < src_len[:, None]
