@@ -730,10 +730,10 @@ class Trainer(object):
             delta = torch.normal(torch.zeros(tensor.shape), torch.full(tensor.shape, params.at_epsilon / 3)).to(tensor.get_device())
             for i in range(params.at_steps):
                 names = self.optimizers.keys()
-                tensor.retain_grad()
                 for optimizer in [self.optimizers[k] for k in names]:
                     optimizer.zero_grad()
                 tensor = model.fwd_embed_only(x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
+                tensor.retain_grad()
                 loss = get_loss(tensor + delta, y)
                 loss.backward()
                 grad = tensor.grad
