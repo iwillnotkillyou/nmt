@@ -694,6 +694,11 @@ class Trainer(object):
         self.stats['processed_s'] += lengths.size(0)
         self.stats['processed_w'] += pred_mask.sum().item()
 
+
+    def clip_to_norm(vec, norm):
+        norms = torch.sqrt(torch.sum(torch.square(vec), 0))
+        return torch.where(torch.ge(norms, norm), (vec / norms.unsqueeze(0).broadcast_to(vec.shape)) * norm, vec)
+
     def mlm_step(self, lang1, lang2, lambda_coeff):
         """
         Masked word prediction step.
@@ -721,10 +726,6 @@ class Trainer(object):
             self.stats[('MLM-%s' % lang1) if lang2 is None else ('MLM-%s-%s' % (lang1, lang2))].append(loss.item())
             return lambda_coeff * loss
 
-        def clip_to_norm(vec, norm):
-            norms = torch.sqrt(torch.sum(torch.square(vec), 0))
-            return torch.where(torch.ge(norms, norm), (vec / norms.unsqueeze(0).broadcast_to(vec.shape)) * norm, vec)
-
         if params.at_steps > 0:
             tensor = model.fwd_embed_only(x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
             delta = torch.normal(torch.zeros(tensor.shape), torch.full(tensor.shape, params.at_epsilon / 3)).to(tensor.get_device())
@@ -737,7 +738,7 @@ class Trainer(object):
                 loss = get_loss(tensor + delta, y)
                 loss.backward()
                 grad = tensor.grad
-                delta = clip_to_norm(delta + grad, params.at_epsilon)
+                delta = self.clip_to_norm(delta + grad, params.at_epsilon)
 
         tensor = model.fwd_embed_only(x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
         loss = (get_loss(tensor, y) + get_loss(tensor + delta, y)) if params.at_steps > 0 else get_loss(tensor, y)
@@ -870,7 +871,7 @@ class EncDecTrainer(Trainer):
 
         def get_loss(x1, x2, y):
             # encode source sentence
-            enc1 = self.encoder.fwd_embedded('fwd', x=x1, lengths=len1, langs=langs1, causal=False)
+            enc1 = self.encoder.fwd_embedded(x=x1, lengths=len1, langs=langs1, causal=False)
             enc1 = enc1.transpose(0, 1)
 
             # decode target sentence
@@ -881,25 +882,22 @@ class EncDecTrainer(Trainer):
             self.stats[('AE-%s' % lang1) if lang1 == lang2 else ('MT-%s-%s' % (lang1, lang2))].append(loss.item())
             return lambda_coeff * loss
 
-        def clip_to_norm(vec, norm):
-            norms = torch.sqrt(torch.sum(torch.square(vec), 1))
-            return torch.where(torch.ge(norms, norm), (vec / norms) * norm, vec)
-
         if params.at_steps > 0:
             tensor = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
-            delta = torch.normal(torch.zeros(tensor.shape), torch.fill(tensor.shape, params.at_epsilon / 3))
+            delta = torch.normal(torch.zeros(tensor.shape), torch.full(tensor.shape, params.at_epsilon / 3)).to(tensor.get_device())
             for i in range(params.at_steps):
                 names = self.optimizers.keys()
                 for optimizer in [self.optimizers[k] for k in names]:
                     optimizer.zero_grad()
                 tensor = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
+                tensor.retain_grad()
                 loss = get_loss(tensor + delta, x2, y)
                 loss.backward()
                 grad = tensor.grad
-                delta = clip_to_norm(delta + grad, params.at_epsilon)
+                delta = self.clip_to_norm(delta + grad, params.at_epsilon)
 
         tensor = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
-        loss = get_loss(tensor + delta if params.at_steps > 0 else 0, x2, y)
+        loss = (get_loss(tensor, x2, y) + get_loss(tensor + delta, x2, y)) if params.at_steps > 0 else get_loss(tensor, x2, y)
         # optimize
         self.optimize(loss)
 
