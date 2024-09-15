@@ -740,7 +740,7 @@ class Trainer(object):
                 delta = clip_to_norm(delta + grad, params.at_epsilon)
 
         tensor = model.fwd_embed_only(x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
-        loss = get_loss(tensor, y) + get_loss(tensor + delta, y) if params.at_steps > 0 else 0
+        loss = (get_loss(tensor, y) + get_loss(tensor + delta, y)) if params.at_steps > 0 else get_loss(tensor, y)
 
         # optimize
         self.optimize(loss)
