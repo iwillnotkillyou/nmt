@@ -723,7 +723,9 @@ class Trainer(object):
 
         def clip_to_norm(vec, norm):
             norms = torch.sqrt(torch.sum(torch.square(vec), 1))
-            return torch.where(torch.ge(norms, norm), (vec / norms) * norm, vec)
+            print(norms.shape)
+            print(vec.shape)
+            return torch.where(torch.ge(norms, norm), (vec / norms.unsqueeze(0).broadcast_to(vec.shape)) * norm, vec)
 
         if params.at_steps > 0:
             tensor = model.fwd_embed_only(x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
