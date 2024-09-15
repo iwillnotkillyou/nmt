@@ -212,6 +212,10 @@ def get_parser():
     parser.add_argument("--master_port", type=int, default=-1,
                         help="Master port (for multi-node SLURM jobs)")
 
+    # adversarial training
+    parser.add_argument("--at_steps", type=int, default=-1)
+    parser.add_argument("--at_epsilon", type=float, default=1)
+
     return parser
 
 
