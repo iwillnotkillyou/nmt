@@ -727,7 +727,7 @@ class Trainer(object):
 
         if params.at_steps > 0:
             tensor = model.fwd_embed_only(x=x, lengths=lengths, positions=positions, langs=langs, causal=False)
-            delta = torch.normal(torch.zeros(tensor.shape), torch.full(tensor.shape, params.at_epsilon / 3)).to(tensot.get_device())
+            delta = torch.normal(torch.zeros(tensor.shape), torch.full(tensor.shape, params.at_epsilon / 3)).to(tensor.get_device())
             for i in range(params.at_steps):
                 names = self.optimizers.keys()
                 tensor.retain_grad()
