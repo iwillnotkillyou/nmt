@@ -723,8 +723,6 @@ class Trainer(object):
 
         def clip_to_norm(vec, norm):
             norms = torch.sqrt(torch.sum(torch.square(vec), 0))
-            print(norms.shape)
-            print(vec.shape)
             return torch.where(torch.ge(norms, norm), (vec / norms.unsqueeze(0).broadcast_to(vec.shape)) * norm, vec)
 
         if params.at_steps > 0:
