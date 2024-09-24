@@ -869,9 +869,12 @@ class EncDecTrainer(Trainer):
         # cuda
         x1, len1, langs1, x2, len2, langs2, y = to_cuda(x1, len1, langs1, x2, len2, langs2, y)
 
-        def get_loss(x1, x2, y):
+        def get_loss(x1, x2, y, embeddings):
             # encode source sentence
-            enc1 = self.encoder.fwd_embedded(x=x1, lengths=len1, langs=langs1, causal=False)
+            if embeddings:
+                enc1 = self.encoder.fwd_embedded(x=x1, lengths=len1, langs=langs1, causal=False)
+            else:
+                enc1 = self.encoder('fwd', x=x1, lengths=len1, langs=langs1, causal=False)
             enc1 = enc1.transpose(0, 1)
 
             # decode target sentence
@@ -882,6 +885,7 @@ class EncDecTrainer(Trainer):
             self.stats[('AE-%s' % lang1) if lang1 == lang2 else ('MT-%s-%s' % (lang1, lang2))].append(loss.item())
             return lambda_coeff * loss
 
+        addl = 0
         if params.at_steps > 0:
             tensor = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
             delta = torch.normal(torch.zeros(tensor.shape), torch.full(tensor.shape, params.at_epsilon / 3)).to(tensor.get_device())
@@ -891,13 +895,14 @@ class EncDecTrainer(Trainer):
                     optimizer.zero_grad()
                 tensor = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
                 tensor.retain_grad()
-                loss = get_loss(tensor + delta, x2, y)
+                loss = get_loss(tensor + delta, x2, y, True)
                 loss.backward()
                 grad = tensor.grad
                 delta = self.clip_to_norm(delta + grad, params.at_epsilon)
+            tensor = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
+            addl = get_loss(tensor + delta, x2, y, True)
 
-        tensor = self.encoder.fwd_embed_only(x=x1, lengths=len1, langs=langs1, causal=False)
-        loss = (get_loss(tensor, x2, y) + get_loss(tensor + delta, x2, y)) if params.at_steps > 0 else get_loss(tensor, x2, y)
+        loss = get_loss(x1, x2, y, False) + addl
         # optimize
         self.optimize(loss)
 
